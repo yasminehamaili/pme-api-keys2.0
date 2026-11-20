@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>API Keys</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1a1d23; --muted: #6b7280;
+    --line: #e5e7eb; --primary: #2563eb; --danger: #dc2626; --ok: #16a34a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1115; --card:#181b21; --text:#e8eaee; --muted:#9aa1ad; --line:#2a2f38; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 16px; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--line);
+          border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; padding: 8px 14px;
+           border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  button.primary { background: var(--primary); border-color: var(--primary); color:#fff; }
+  button.danger  { background: var(--danger);  border-color: var(--danger);  color:#fff; }
+  button.link { border:none; background:none; color:var(--primary); padding:4px 8px; }
+  button.link.red { color: var(--danger); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+
+  /* usage bar */
+  .bar { height: 10px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 10px; }
+  .bar > div { height: 100%; width: 0; background: var(--primary); transition: width .4s; }
+  .bar > div.warn { background: #f59e0b; }
+  .bar > div.full { background: var(--danger); }
+
+  table { width:100%; border-collapse: collapse; }
+  th, td { text-align:left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 13px; }
+  code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+  .badge { padding: 2px 8px; border-radius: 99px; font-size: 12px; }
+  .badge.active  { background: #dcfce7; color: #166534; }
+  .badge.revoked { background: #fee2e2; color: #991b1b; }
+  .empty { color: var(--muted); text-align:center; padding: 28px 0; }
+
+  dialog { border: 1px solid var(--line); border-radius: 12px; padding: 24px;
+           width: min(480px, 92vw); background: var(--card); color: var(--text); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog h2 { margin: 0 0 8px; font-size: 18px; }
+  input[type=text] { width:100%; padding: 9px 10px; border-radius: 8px;
+                     border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+  .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+  .warning { background:#fef3c7; color:#92400e; padding:10px 12px; border-radius:8px; margin:10px 0; }
+  .keybox { display:flex; gap:8px; }
+  .keybox code { flex:1; word-break: break-all; background: var(--bg);
+                 border:1px solid var(--line); border-radius:8px; padding:10px; }
+  .error { color: var(--danger); margin-top: 8px; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>API Keys</h1>
+  <p class="sub">Create and manage the keys your apps use to call our API.</p>
+
+  <!-- ===== Traffic & Limits: plan usage ===== -->
+  <section class="card">
+    <div class="row">
+      <strong>Today's usage</strong>
+      <span id="usageText" class="sub" style="margin:0">Loading…</span>
+    </div>
+    <div class="bar"><div id="usageBar"></div></div>
+  </section>
+
+  <!-- ===== Keys list ===== -->
+  <section class="card">
+    <div class="row" style="margin-bottom:12px">
+      <strong>Your keys</strong>
+      <button class="primary" id="generateBtn">+ Generate Key</button>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Key</th><th>Status</th><th>Last used</th><th></th></tr>
+      </thead>
+      <tbody id="keysBody"></tbody>
+    </table>
+    <div id="emptyMsg" class="empty" hidden>No keys yet. Click “Generate Key” to create one.</div>
+  </section>
+</main>
+
+<!-- ===== Dialog 1: ask for a name ===== -->
+<dialog id="nameDialog">
+  <form method="dialog" id="nameForm">
+    <h2 id="nameTitle">Name your key</h2>
+    <p class="sub" style="margin:0 0 10px">Something that helps you remember where it's used.</p>
+    <input type="text" id="nameInput" maxlength="60" placeholder="e.g. Production server" required />
+    <div class="error" id="nameError"></div>
+    <div class="actions">
+      <button type="button" id="nameCancel">Cancel</button>
+      <button type="submit" class="primary" id="nameSave">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ===== Dialog 2: ONE-TIME copy warning ===== -->
+<dialog id="secretDialog">
+  <h2>Your new API key</h2>
+  <div class="warning">
+    ⚠️ Copy this key now. For your security it <strong>will not be shown again</strong>.
+  </div>
+  <div class="keybox">
+    <code id="secretValue"></code>
+    <button id="copyBtn">Copy</button>
+  </div>
+  <div class="actions">
+    <button class="primary" id="secretDone" disabled>I've saved it</button>
+  </div>
+</dialog>
+
+<!-- ===== Dialog 3: revoke confirmation ===== -->
+<dialog id="revokeDialog">
+  <h2>Revoke this key?</h2>
+  <p>Any app using <strong id="revokeName"></strong> will stop working immediately.
+     This cannot be undone.</p>
+  <div class="actions">
+    <button id="revokeCancel">Cancel</button>
+    <button class="danger" id="revokeConfirm">Yes, revoke</button>
+  </div>
+</dialog>
+
+<script>
+  // ---------- tiny helpers ----------
+  const $ = (id) => document.getElementById(id);
+
+  // Optional: pretend to be a specific customer while testing
+  // const HEADERS = { "X-Customer-Id": "pme_42" };
+  const HEADERS = {};
+
+  async function api(path, options = {}) {
+    const res = await fetch(path, {
+      ...options,
+      headers: { "Content-Type": "application/json", ...HEADERS },
+    });
+    if (!res.ok) {
+      let msg = "Something went wrong";
+      try { msg = (await res.json()).detail || msg; } catch {}
+      throw new Error(typeof msg === "string" ? msg : "Invalid input");
+    }
+    return res.json();
+  }
+
+  function formatDate(s) {
+    if (!s) return "Never";
+    return new Date(s.replace(" ", "T") + "Z").toLocaleString();
+  }
+
+  // ---------- usage bar ----------
+  async function loadUsage() {
+    const u = await api("/api/usage");
+    $("usageText").textContent =
+      `${u.used.toLocaleString()} / ${u.limit.toLocaleString()} requests used today`;
+    const bar = $("usageBar");
+    bar.style.width = u.percent + "%";
+    bar.className = u.percent >= 100 ? "full" : u.percent >= 80 ? "warn" : "";
+  }
+
+  // ---------- keys table ----------
+  async function loadKeys() {
+    const keys = await api("/api/keys");
+    const body = $("keysBody");
+    body.innerHTML = "";
+    $("emptyMsg").hidden = keys.length > 0;
+
+    for (const k of keys) {
+      const tr = document.createElement("tr");
+
+      // We use textContent (not innerHTML) so a malicious key name
+      // can't inject HTML/JS into the page.
+      const name = document.createElement("td"); name.textContent = k.name;
+
+      const prefix = document.createElement("td");
+      const code = document.createElement("code");
+      code.textContent = k.key_prefix + "…";
+      prefix.appendChild(code);
+
+      const status = document.createElement("td");
+      const badge = document.createElement("span");
+      badge.className = "badge " + (k.is_active ? "active" : "revoked");
+      badge.textContent = k.is_active ? "Active" : "Revoked";
+      status.appendChild(badge);
+
+      const used = document.createElement("td");
+      used.textContent = formatDate(k.last_used_at);
+
+      const actions = document.createElement("td");
+      actions.style.textAlign = "right";
+      if (k.is_active) {
+        const rename = document.createElement("button");
+        rename.className = "link"; rename.textContent = "Rename";
+        rename.onclick = () => openRename(k);
+        const revoke = document.createElement("button");
+        revoke.className = "link red"; revoke.textContent = "Revoke";
+        revoke.onclick = () => openRevoke(k);
+        actions.append(rename, revoke);
+      }
+
+      tr.append(name, prefix, status, used, actions);
+      body.appendChild(tr);
+    }
+  }
+
+  // ---------- Generate / Rename (shared name dialog) ----------
+  let nameMode = "create";   // "create" or "rename"
+  let renameId = null;
+
+  $("generateBtn").onclick = () => {
+    nameMode = "create";
+    $("nameTitle").textContent = "Name your key";
+    $("nameInput").value = "";
+    $("nameError").textContent = "";
+    $("nameDialog").showModal();
+    $("nameInput").focus();
+  };
+
+  function openRename(k) {
+    nameMode = "rename"; renameId = k.id;
+    $("nameTitle").textContent = "Rename key";
+    $("nameInput").value = k.name;
+    $("nameError").textContent = "";
+    $("nameDialog").showModal();
+    $("nameInput").select();
+  }
+
+  $("nameCancel").onclick = () => $("nameDialog").close();
+
+  $("nameForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("nameInput").value.trim();
+    if (!name) { $("nameError").textContent = "Please enter a name."; return; }
+    $("nameSave").disabled = true;
+    try {
+      if (nameMode === "create") {
+        const created = await api("/api/keys", {
+          method: "POST", body: JSON.stringify({ name }),
+        });
+        $("nameDialog").close();
+        showSecret(created.key);
+      } else {
+        await api(`/api/keys/${renameId}`, {
+          method: "PATCH", body: JSON.stringify({ name }),
+        });
+        $("nameDialog").close();
+      }
+      await loadKeys();
+    } catch (err) {
+      $("nameError").textContent = err.message;
+    } finally {
+      $("nameSave").disabled = false;
+    }
+  });
+
+  // ---------- One-time copy-warning modal ----------
+  function showSecret(key) {
+    $("secretValue").textContent = key;
+    $("copyBtn").textContent = "Copy";
+    $("secretDone").disabled = true;           // must copy first
+    $("secretDialog").showModal();
+  }
+
+  $("copyBtn").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText($("secretValue").textContent);
+      $("copyBtn").textContent = "Copied ✓";
+      $("secretDone").disabled = false;
+    } catch {
+      // Clipboard can be blocked; let the user select + copy by hand.
+      $("copyBtn").textContent = "Copy manually";
+      $("secretDone").disabled = false;
+    }
+  };
+
+  $("secretDone").onclick = () => {
+    $("secretValue").textContent = "";         // wipe it from the page
+    $("secretDialog").close();
+  };
+  // Block Esc from closing it before the user has copied the key
+  $("secretDialog").addEventListener("cancel", (e) => {
+    if ($("secretDone").disabled) e.preventDefault();
+  });
+
+  // ---------- Revoke confirmation ----------
+  let revokeId = null;
+  function openRevoke(k) {
+    revokeId = k.id;
+    $("revokeName").textContent = k.name;
+    $("revokeDialog").showModal();
+  }
+  $("revokeCancel").onclick = () => $("revokeDialog").close();
+  $("revokeConfirm").onclick = async () => {
+    try {
+      await api(`/api/keys/${revokeId}/revoke`, { method: "POST" });
+    } finally {
+      $("revokeDialog").close();
+      await loadKeys();
+    }
+  };
+
+  // ---------- start ----------
+  loadKeys();
+  loadUsage();
+  setInterval(loadUsage, 15000);   // refresh usage every 15 s
+</script>
+</body>
+</html>
